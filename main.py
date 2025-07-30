@@ -1,62 +1,67 @@
 from flask import Flask
 from threading import Thread
-
-app = Flask('')
-
-@app.route('/')
-def home():
-    return "✅ Willhaben-Watcher läuft!"
-
-def run_server():
-    app.run(host='0.0.0.0', port=8080)
-
-# Webserver starten
-Thread(target=run_server).start()
 import time
 import requests
 from bs4 import BeautifulSoup
 
-# === Hier DEINE Daten eintragen ===
-WILLHABEN_URL = "https://www.willhaben.at/iad/gebrauchtwagen/auto/bmw-gebrauchtwagen/x3"
+# Webserver starten
+app = Flask('')
+
+@app.route('/')
+def home():
+    return "✅✅ Willhaben-Watcher läuft!"
+
+def run_server():
+    app.run(host='0.0.0.0', port=8080)
+
+Thread(target=run_server).start()
+
+# === Deine Daten hier eintragen ===
+WILLHABEN_URLS = [
+    "https://www.willhaben.at/iad/gebrauchtwagen/auto/bmw-gebrauchtwagen/x3",
+    "https://www.willhaben.at/iad/gebrauchtwagen/auto/gebrauchtwagenboerse?sfId=79088eeb-d3c6-4a42-bd15-06b12af166d0&isNavigation=true&CAR_MODEL/MAKE=1005&CAR_MODEL/MODEL=1042&YEAR_MODEL_FROM=2017&PRICE_TO=20000&ENGINEEFFECT_FROM=169"
+]
+
 BOT_TOKEN = "8291502722:AAFZwL-g89YEiSSVNI0RFuEE53GNQnQSWzU"
-CHAT_ID = "6369503548"
+CHAT_IDS = ["6369503548", ""]  # Füge beliebig viele IDs hinzu
 
 gesehene_anzeigen = set()
 
+# Nachricht an alle Chat-IDs senden
 def sende_telegram_nachricht(text):
     url = f'https://api.telegram.org/bot{BOT_TOKEN}/sendMessage'
-    payload = {'chat_id': CHAT_ID, 'text': text}
-    try:
-        requests.post(url, data=payload)
-    except Exception as e:
-        print("Fehler beim Senden der Nachricht:", e)
+    for chat_id in CHAT_IDS:
+        payload = {'chat_id': chat_id, 'text': text}
+        try:
+            requests.post(url, data=payload)
+        except Exception as e:
+            print(f"Fehler beim Senden an {chat_id}:", e)
 
+# Neue Anzeigen abrufen
 def hole_neue_anzeigen():
-    headers = {'User-Agent': 'Mozilla/5.0'}
-    try:
-        response = requests.get(WILLHABEN_URL, headers=headers)
-    except Exception as e:
-        print("Fehler beim Abrufen der Seite:", e)
-        return []
-
-    soup = BeautifulSoup(response.text, 'html.parser')
-    anzeigen_links = soup.find_all("a", href=True)
     neue = []
+    headers = {'User-Agent': 'Mozilla/5.0'}
 
-    for a in anzeigen_links:
-        href = a["href"]
-        if (
-            href.startswith("/iad/gebrauchtwagen") or
-            href.startswith("/iad/kaufen-und-verkaufen")
-        ) and href not in gesehene_anzeigen:
-            full_link = "https://www.willhaben.at" + href
-            gesehene_anzeigen.add(href)
-            neue.append(full_link)
+    for url in WILLHABEN_URLS:
+        try:
+            response = requests.get(url, headers=headers)
+            soup = BeautifulSoup(response.text, 'html.parser')
+            links = soup.find_all("a", href=True)
 
-    print(f"🔍 Gefundene Anzeigen: {len(neue)}")
+            for a in links:
+                href = a["href"]
+                if (href.startswith("/iad/gebrauchtwagen") or href.startswith("/iad/kaufen-und-verkaufen")) \
+                        and href not in gesehene_anzeigen:
+                    full_link = "https://www.willhaben.at" + href
+                    gesehene_anzeigen.add(href)
+                    neue.append(full_link)
+        except Exception as e:
+            print("❌ Fehler beim Abrufen der Seite:", e)
+
+    print(f"🔎 Gefundene neue Anzeigen: {len(neue)}")
     return neue
 
-# Hauptprogramm
+# Hauptloop
 print("Starte Willhaben-Überwachung...\n")
 
 while True:
@@ -69,8 +74,8 @@ while True:
                 print("✅ Gesendet:", link)
         else:
             print("Keine neuen Anzeigen.")
-        time.sleep(30)  # oder 60, je nachdem wie oft du abfragen willst
+        time.sleep(120)  # 2 Minuten
     except Exception as e:
-        print("💥 Fehler im Hauptloop:", e)
-        print("🔁 Neustart in 60 Sekunden...")
-        time.sleep(60)
+        print("❌ Fehler im Hauptloop:", e)
+        print("🔄 Neustart in 2 Minuten...")
+        time.sleep(120)
